@@ -19,7 +19,6 @@ from pprint import pprint
 from param import parse_args
 
 from vqa_data import get_loader
-from qa_answer_table import AnswerTable, load_lxmert_qa
 from utils import load_state_dict, LossMeter, set_global_logging_level
 import dist_utils
 import wandb
@@ -84,9 +83,6 @@ class Trainer(TrainerBase):
             self.model.resize_token_embeddings(self.model.model.shared.num_embeddings + num_added_toks)
 
         self.model.tokenizer = self.tokenizer
-
-        if self.verbose:
-            self.answer_table = AnswerTable()
 
         # Load Checkpoint
         self.start_epoch = None

@@ -18,8 +18,6 @@ from torch.utils.data.distributed import DistributedSampler
 from transformers import T5Tokenizer, BartTokenizer
 from tokenization import VLT5Tokenizer
 
-from qa_answer_table import AnswerTable
-
 
 project_dir = Path(__file__).resolve().parent.parent  # VLT5
 workspace_dir = project_dir.parent

@@ -64,7 +64,7 @@ sys.path.append('./VL-T5/src')
 from param import parse_args
 args = parse_args(
     backbone='t5-base' # Backbone architecture
-    load='./VL-T5/snap/pretrain/VL-T5/Epoch30' # Pretrained checkpoint
+    load='./snap/pretrain/VL-T5/Epoch30' # Pretrained checkpoint
     parse=False, # False for interactive env (ex. jupyter)
 )
 # Assign GPU
@@ -89,7 +89,7 @@ test_loader = get_loader(
 )
 
 # Import trainer
-from pretrain import Trainer
+from vqa import Trainer
 trainer = Trainer(
     args,
     train_loader=train_loader
