@@ -1,3 +1,4 @@
+
 import torch.backends.cudnn as cudnn
 import torch.multiprocessing as mp
 import torch.distributed as dist
@@ -11,17 +12,16 @@ import numpy as np
 from tqdm import tqdm
 import torch
 import torch.nn as nn
-# from torch.utils.data.dataloader import DataLoader
 import logging
 import shutil
 from pprint import pprint
 
 from param import parse_args
-from mmt_data import get_loader
 
+
+from nlvr_data import get_loader
 from utils import load_state_dict, LossMeter, set_global_logging_level
 import wandb
-from pprint import pformat
 
 set_global_logging_level(logging.ERROR, ["transformers"])
 
@@ -41,6 +41,7 @@ else:
     _use_native_amp = True
     from torch.cuda.amp import autocast
 
+
 from trainer_base import TrainerBase
 
 class Trainer(TrainerBase):
@@ -52,12 +53,16 @@ class Trainer(TrainerBase):
             test_loader=test_loader,
             train=train)
 
-        from mmt_model import VLT5MMT, VLBartMMT
+        if not self.verbose:
+            set_global_logging_level(logging.ERROR, ["transformers"])
 
+        from nlvr_model import VLT5NLVR, VLBartNLVR
+
+        model_kwargs = {}
         if 't5' in args.backbone:
-            model_class = VLT5MMT
+            model_class = VLT5NLVR
         elif 'bart' in args.backbone:
-            model_class = VLBartMMT
+            model_class = VLBartNLVR
 
         config = self.create_config()
         self.tokenizer = self.create_tokenizer()
@@ -65,26 +70,39 @@ class Trainer(TrainerBase):
             num_added_toks = 0
             if config.use_vis_order_embedding:
                 additional_special_tokens = [f'<extra_id_{i}>' for i in range(100-1, -1, -1)] + \
-                        [f'<vis_extra_id_{i}>' for i in range(100-1, -1, -1)]
-                special_tokens_dict = {'additional_special_tokens': additional_special_tokens}
-                num_added_toks = self.tokenizer.add_special_tokens(special_tokens_dict)
+                    [f'<vis_extra_id_{i}>' for i in range(100-1, -1, -1)]
+                special_tokens_dict = {
+                    'additional_special_tokens': additional_special_tokens}
+                num_added_toks = self.tokenizer.add_special_tokens(
+                    special_tokens_dict)
 
-                config.default_obj_order_ids = self.tokenizer.convert_tokens_to_ids([f'<vis_extra_id_{i}>' for i in range(100)])
+                config.default_obj_order_ids = self.tokenizer.convert_tokens_to_ids(
+                    [f'<vis_extra_id_{i}>' for i in range(100)])
 
-        self.model = self.create_model(model_class, config)
+        self.model = self.create_model(model_class, config, **model_kwargs)
 
         if 't5' in self.args.tokenizer:
             self.model.resize_token_embeddings(self.tokenizer.vocab_size)
         elif 'bart' in self.args.tokenizer:
-            self.model.resize_token_embeddings(self.model.model.shared.num_embeddings + num_added_toks)
+            self.model.resize_token_embeddings(
+                self.model.model.shared.num_embeddings + num_added_toks)
+            if self.verbose:
+                print(f'Vocab resize: {self.tokenizer.vocab_size} -> {self.model.model.shared.num_embeddings}')
+                assert self.model.model.shared.weight is self.model.lm_head.weight
+                assert self.model.model.shared.weight is self.model.model.encoder.visual_embedding.obj_order_embedding.weight
+
 
         self.model.tokenizer = self.tokenizer
+        if 't5' in self.args.tokenizer or 'bart' in self.args.tokenizer:
+            self.model.true_id = self.tokenizer('true', add_special_tokens=False).input_ids[0]
+            self.model.false_id = self.tokenizer('false', add_special_tokens=False).input_ids[0]
 
         # Load Checkpoint
         self.start_epoch = None
         if args.load is not None:
             ckpt_path = args.load + '.pth'
             self.load_checkpoint(ckpt_path)
+
 
         if self.args.from_scratch:
             self.init_weights()
@@ -109,28 +127,23 @@ class Trainer(TrainerBase):
         if args.multiGPU:
             if args.distributed:
                 self.model = DDP(self.model, device_ids=[args.gpu],
-                                find_unused_parameters=True
-                                )
+                                 find_unused_parameters=True
+                                 )
         if self.verbose:
             print(f'It took {time() - start:.1f}s')
-
 
     def train(self):
         if self.verbose:
             loss_meter = LossMeter()
+            # best_eval_loss = 9595.
+            quesid2ans = {}
             best_valid = 0.
             best_epoch = 0
 
             if 't5' in self.args.backbone:
-                if self.args.use_vision:
-                    project_name = "VLT5_MMT"
-                else:
-                    project_name = "T5_MMT"
+                project_name = "VLT5_NLVR"
             elif 'bart' in self.args.backbone:
-                if self.args.use_vision:
-                    project_name = "VLBart_MMT"
-                else:
-                    project_name = "Bart_MMT"
+                project_name = "VLBART_NLVR"
 
             wandb.init(project=project_name)
             wandb.run.name = self.args.run_name
@@ -153,17 +166,24 @@ class Trainer(TrainerBase):
             if self.args.distributed:
                 self.train_loader.sampler.set_epoch(epoch)
             if self.verbose:
-                pbar = tqdm(total=len(self.train_loader), ncols=120)
+                pbar = tqdm(total=len(self.train_loader), ncols=150)
+                nlvr_results = np.zeros(4, dtype=int)
+
 
             epoch_results = {
-                'loss': 0.,
+                'loss': 0,
 
             }
 
+            quesid2ans = {}
+            train_acc = 0.
+            train_acc_steps = int(len(self.train_loader) * 0.05)
+            last_acc_step = 0
+
+
             for step_i, batch in enumerate(self.train_loader):
 
-
-                # self.optim.zero_grad()
+                self.optim.zero_grad()
                 if self.args.fp16 and _use_native_amp:
                     with autocast():
                         if self.args.distributed:
@@ -205,28 +225,19 @@ class Trainer(TrainerBase):
                         torch.nn.utils.clip_grad_norm_(
                             self.model.parameters(), self.args.clip_grad_norm)
 
-                update = True
-                if self.args.gradient_accumulation_steps > 1:
-                    if step_i == 0:
-                        update = False
-                    elif step_i % self.args.gradient_accumulation_steps == 0 or step_i == len(self.train_loader) - 1:
-                        update = True
-                    else:
-                        update = False
+                if self.args.fp16 and _use_native_amp:
+                    self.scaler.step(self.optim)
+                    self.scaler.update()
+                else:
+                    self.optim.step()
 
-                if update:
-                    if self.args.fp16 and _use_native_amp:
-                        self.scaler.step(self.optim)
-                        self.scaler.update()
-                    else:
-                        self.optim.step()
+                if self.lr_scheduler:
+                    self.lr_scheduler.step()
+                # self.model.zero_grad()
+                for param in self.model.parameters():
+                    param.grad = None
 
-                    if self.lr_scheduler:
-                        self.lr_scheduler.step()
-                    # self.model.zero_grad()
-                    for param in self.model.parameters():
-                        param.grad = None
-                    global_step += 1
+                global_step += 1
 
                 for k, v in results.items():
                     if k in epoch_results:
@@ -245,39 +256,75 @@ class Trainer(TrainerBase):
 
                 if self.verbose:
                     loss_meter.update(loss.item())
-                    desc_str = f'Epoch {epoch} | LR {lr:.6f} | Steps {global_step}'
-                    desc_str += f' | Loss {loss_meter.val:4f}'
+                    desc_str = f'Epoch {epoch} | LR {lr:.6f} | '
+                    desc_str += f'Loss {loss_meter.val:4f} |'
+
+                    pred_ans = results['pred_ans_id']
+                    ques_ids = batch['question_ids']
+
+                    for qid, ans in zip(ques_ids, pred_ans):
+                        quesid2ans[qid] = ans
+
+                    label = batch['labels'].cpu().numpy()
+                    predict = results['pred_ans_id']
+                    nlvr_results[0] += sum((label == 1) & (predict == 1))
+                    nlvr_results[1] += sum((label == 1) & (predict == 0))
+                    nlvr_results[2] += sum((label == 0) & (predict == 1))
+                    nlvr_results[3] += sum((label == 0) & (predict == 0))
+                    n_total = sum(nlvr_results)
+
+                    desc_str += f' TP {nlvr_results[0]} ({nlvr_results[0]/n_total*100:.1f}%)'
+                    desc_str += f' FN {nlvr_results[1]} ({nlvr_results[1]/n_total*100:.1f}%)'
+                    desc_str += f' FP {nlvr_results[2]} ({nlvr_results[2]/n_total*100:.1f}%)'
+                    desc_str += f' TN {nlvr_results[3]} ({nlvr_results[3]/n_total*100:.1f}%)'
+
                     pbar.set_description(desc_str)
                     pbar.update(1)
 
-                # if self.args.distributed:
-                #     dist.barrier()
+                if self.args.distributed:
+                    dist.barrier()
 
             if self.verbose:
                 pbar.close()
 
+                log_str = ''
+
+                # train_score_dict = self.train_loader.evaluator.evaluate(quesid2ans)
+                # train_acc = train_score_dict['accuracy']  * 100.
+                # train_cons = train_score_dict['consistency'] * 100.
+
+                train_acc = self.train_loader.evaluator.evaluate_train(quesid2ans) * 100.
+
+                train_score = train_acc
+
+                log_str += "\nEpoch %d: Train %0.2f" % (epoch, train_score)
 
                 # Validation
-                valid_results = self.evaluate(self.val_loader)
+                valid_score_dict = self.evaluate(self.val_loader)
+                valid_acc = valid_score_dict['accuracy'] * 100.
+                # valid_cons = valid_score_dict['consistency'] * 100.
 
-                valid_score = valid_results['BLEU']
+                valid_score = valid_acc
 
                 if valid_score > best_valid:
                     best_valid = valid_score
                     best_epoch = epoch
                     self.save("BEST")
 
-                log_str = ''
-
-                log_str += pformat(valid_results)
-                log_str += "\nEpoch %d: Valid BLEU %0.4f" % (epoch, valid_score)
-                log_str += "\nEpoch %d: Best BLEU %0.4f\n" % (best_epoch, best_valid)
+                log_str += "\nEpoch %d: Valid %0.2f" % (epoch, valid_score)
+                log_str += "\nEpoch %d: Best %0.2f\n" % (best_epoch, best_valid)
 
                 wandb_log_dict = {}
-                wandb_log_dict['Train/Loss'] = epoch_results['loss'] / len(self.train_loader)
+                # wandb_log_dict['Train/Loss'] = loss_meter.val
+                # wandb_log_dict['Train/score'] = score
+                # wandb_log_dict['Valid/score'] = valid_score
 
-                for score_name, score in valid_results.items():
-                    wandb_log_dict[f'Valid/{score_name}'] = score
+                # for score_name, score in train_score_dict.items():
+                    # wandb_log_dict[f'Train/{score_name}'] = score * 100.
+                wandb_log_dict['Train/accuracy'] = train_acc
+
+                for score_name, score in valid_score_dict.items():
+                    wandb_log_dict[f'Valid/{score_name}'] = score * 100.
 
                 wandb.log(wandb_log_dict, step=epoch)
 
@@ -286,6 +333,7 @@ class Trainer(TrainerBase):
             if self.args.distributed:
                 dist.barrier()
 
+
         if self.verbose:
             self.save("LAST")
 
@@ -293,105 +341,57 @@ class Trainer(TrainerBase):
             best_path = os.path.join(self.args.output, 'BEST')
             self.load(best_path)
 
-            if isinstance(self.test_loader, list):
+            log_str = 'Test set results\n'
 
-                for loader in self.test_loader:
+            dump_path = os.path.join(self.args.output, 'submit.csv')
+            test_score_dict = self.evaluate(self.test_loader, dump_path=dump_path)
+            wandb.save(dump_path, base_path=self.args.output)
 
-                    split = loader.dataset.source
-                    dump_path = os.path.join(self.args.output, f'submit_{split}_raw.txt')
-                    test_results = self.evaluate(loader, dump_path=dump_path)
+            wandb_log_dict = {}
+            for score_name, score in test_score_dict.items():
+                wandb_log_dict[f'Test/{score_name}'] = score * 100.
+            wandb.log(wandb_log_dict, step=epoch)
 
-                    wandb_log_dict = {}
-                    for score_name, score in test_results.items():
-                        wandb_log_dict[f'{split}/{score_name}'] = score
-                    wandb.log(wandb_log_dict, step=epoch)
+            from pprint import pformat
 
-                    log_str = f'{split} set results\n'
-                    log_str += pformat(test_results)
+            log_str += pformat(test_score_dict)
 
-                    print(log_str)
+            print(log_str)
 
-                    wandb.save(dump_path, base_path=self.args.output)
-                    print('\nUploaded', dump_path)
-
-            else:
-                split = loader.dataset.source
-                dump_path = os.path.join(self.args.output, f'submit_{split}_raw.txt')
-                test_results = self.evaluate(loader, dump_path=dump_path)
-
-                wandb_log_dict = {}
-                for score_name, score in test_results.items():
-                    wandb_log_dict[f'{split}/{score_name}'] = score
-                wandb.log(wandb_log_dict, step=epoch)
-
-                log_str = f'{split} set results\n'
-                log_str += pformat(test_results)
-
-                print(log_str)
-
-                wandb.save(dump_path, base_path=self.args.output)
-                print('\nUploaded', dump_path)
 
             wandb.log({'finished': True})
 
-            # exit()
-
-        # if self.args.distributed:
-        #     dist.barrier()
-
     def predict(self, loader, dump_path=None):
+        """
+        Predict the answers to questions in a data split.
+        :param eval_tuple: The data tuple to be evaluated.
+        :param dump: The path of saved file to dump results.
+        :return: A dict of question_id to answer.
+        """
         self.model.eval()
         with torch.no_grad():
-
-            predictions = []
-            targets = [[]]
-
-            gen_kwargs = {}
-            gen_kwargs['num_beams'] = self.args.num_beams
-            gen_kwargs['max_length'] = self.args.gen_max_length
-
-            for i, batch in enumerate(tqdm(loader, ncols=120, desc=f"Prediction {loader.dataset.source}")):
+            quesid2ans = {}
+            for i, batch in enumerate(tqdm(loader, ncols=150, desc="Prediction")):
 
                 if self.args.distributed:
-                    results = self.model.module.test_step(
-                        batch,
-                        **gen_kwargs)
+                    results = self.model.module.test_step(batch)
                 else:
-                    results = self.model.test_step(
-                        batch,
-                        **gen_kwargs)
+                    results = self.model.test_step(batch)
 
-                predictions.extend(results['pred'])
+                pred_ans = results['pred_ans_id']
+                ques_ids = batch['question_ids']
 
-                targets[0].extend(batch['target_text'])
-
-            assert len(predictions) == len(targets[0]), (len(predictions), len(targets[0]))
-            assert len(targets) == 1
-
-            results = {
-                'predictions': predictions,
-                'targets': targets
-            }
+                for qid, ans in zip(ques_ids, pred_ans):
+                    quesid2ans[qid] = ans
 
             if dump_path is not None:
-                print('Dumping prediction')
-                with open(dump_path, 'w') as f:
-                    for i, pred in enumerate(predictions):
-                        f.write(pred.lower().strip())
-                        if i+1 < len(predictions):
-                            f.write('\n')
-
-            return results
+                loader.evaluator.dump_result(quesid2ans, dump_path)
+            return quesid2ans
 
     def evaluate(self, loader, dump_path=None):
         evaluator = loader.evaluator
-        results = self.predict(loader, dump_path)
-
-        predictions = results['predictions']
-        targets = results['targets']
-        eval_results = evaluator.evaluate(predictions, targets)
-        return eval_results
-
+        quesid2ans = self.predict(loader, dump_path)
+        return evaluator.evaluate(quesid2ans)
 
     def save(self, name):
         if not os.path.isdir(self.args.output):
@@ -407,6 +407,7 @@ class Trainer(TrainerBase):
             state_dict = torch.load("%s.pth" % path, map_location=loc)
         self.model.load_state_dict(state_dict)
 
+
 def main_worker(gpu, args):
     # GPU is assigned
     args.gpu = gpu
@@ -417,7 +418,6 @@ def main_worker(gpu, args):
         torch.cuda.set_device(args.gpu)
         dist.init_process_group(backend='nccl')
 
-
     print(f'Building train loader at GPU {gpu}')
     train_loader = get_loader(
         args,
@@ -427,47 +427,25 @@ def main_worker(gpu, args):
         topk=args.train_topk,
     )
 
-    if args.valid_batch_size is not None:
-        valid_batch_size = args.valid_batch_size
-    else:
-        valid_batch_size = args.batch_size
-
-    val_loader = test_loader = None
-    if gpu == 0:
-        print(f'Building val loader at GPU {gpu}')
-        val_loader = get_loader(
-            args,
-            split=args.valid, mode='val', batch_size=valid_batch_size,
-            distributed=False, gpu=args.gpu,
-            workers=4,
-            topk=args.valid_topk,
-        )
-
-        print(f'Building test loader at GPU {gpu}')
-        if len(args.test.split(',')) == 1:
-            test_loader = get_loader(
-                args,
-                split=args.test, mode='val', batch_size=valid_batch_size,
-                distributed=False, gpu=args.gpu,
-                workers=4,
-                topk=args.valid_topk,
-            )
-
-        elif len(args.test.split(',')) > 1:
-            test_loader = []
-
-            for test_split in args.test.split(','):
-                test_loader.append(get_loader(
-                    args,
-                    split=test_split, mode='val', batch_size=valid_batch_size,
-                    distributed=False, gpu=args.gpu,
-                    workers=4,
-                    topk=args.valid_topk,
-                ))
+    print(f'Building val loader at GPU {gpu}')
+    val_loader = get_loader(
+        args,
+        split=args.valid, mode='val', batch_size=args.batch_size,
+        distributed=args.distributed, gpu=args.gpu,
+        workers=4,
+        topk=args.valid_topk,
+    )
+    print(f'Building test loader at GPU {gpu}')
+    test_loader = get_loader(
+        args,
+        split=args.test, mode='val', batch_size=args.batch_size,
+        distributed=args.distributed, gpu=args.gpu,
+        workers=4,
+        topk=args.valid_topk,
+    )
 
     trainer = Trainer(args, train_loader, val_loader, test_loader, train=True)
     trainer.train()
-
 
 
 if __name__ == "__main__":
@@ -486,13 +464,9 @@ if __name__ == "__main__":
             comments.append(args.comment)
         comment = '_'.join(comments)
 
-        # if not args.test:
         from datetime import datetime
         current_time = datetime.now().strftime('%b%d_%H-%M')
-        project_dir = Path(__file__).resolve().parent.parent
 
-        log_dir = project_dir.joinpath('logs')
-        log_dir = log_dir.joinpath('MMT')
         run_name = f'{current_time}_GPU{args.world_size}'
         if len(comments) > 0:
             run_name += f'_{comment}'

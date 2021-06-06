@@ -18,9 +18,10 @@ from pprint import pprint
 
 from param import parse_args
 
-from gqa_data import get_loader
-from utils import LossMeter, set_global_logging_level
+from caption_data import get_loader
+from utils import load_state_dict, LossMeter, set_global_logging_level
 import wandb
+from pprint import pformat
 
 set_global_logging_level(logging.ERROR, ["transformers"])
 
@@ -40,7 +41,6 @@ else:
     _use_native_amp = True
     from torch.cuda.amp import autocast
 
-
 from trainer_base import TrainerBase
 
 class Trainer(TrainerBase):
@@ -52,13 +52,15 @@ class Trainer(TrainerBase):
             test_loader=test_loader,
             train=train)
 
-        from gqa_model import VLT5GQA, VLBartGQA
+        self.wandb_initialized = False
+
+        from caption_model import VLT5COCOCaption, VLBartCOCOCaption
 
         model_kwargs = {}
         if 't5' in args.backbone:
-            model_class = VLT5GQA
+            model_class = VLT5COCOCaption
         elif 'bart' in args.backbone:
-            model_class = VLBartGQA
+            model_class = VLBartCOCOCaption
 
         config = self.create_config()
         self.tokenizer = self.create_tokenizer()
@@ -118,40 +120,36 @@ class Trainer(TrainerBase):
     def train(self):
         if self.verbose:
             loss_meter = LossMeter()
-
             best_valid = 0.
             best_epoch = 0
 
-            if 't5' in self.args.backbone:
-                if self.args.use_vision:
-                    project_name = "VLT5_GQA"
-                else:
-                    project_name = "T5_GQA"
-            elif 'bart' in self.args.backbone:
-                if self.args.use_vision:
-                    project_name = "VLBart_GQA"
-                else:
-                    project_name = "Bart_GQA"
+            if not self.wandb_initialized:
 
-            wandb.init(project=project_name)
-            wandb.run.name = self.args.run_name
-            wandb.config.update(self.args)
-            wandb.watch(self.model)
+                if 't5' in self.args.backbone:
+                    project_name = "VLT5_COCOCaption"
+                elif 'bart' in self.args.backbone:
+                    project_name = "VLBart_COCOCaption"
 
-            src_dir = Path(__file__).resolve().parent
-            base_path = str(src_dir.parent)
-            src_dir = str(src_dir)
-            wandb.save(os.path.join(src_dir + "/*.py"), base_path=base_path)
+                wandb.init(project=project_name)
+                wandb.run.name = self.args.run_name
+                wandb.config.update(self.args)
+                wandb.watch(self.model)
+
+                src_dir = Path(__file__).resolve().parent
+                base_path = str(src_dir.parent)
+                src_dir = str(src_dir)
+                wandb.save(os.path.join(src_dir + "/*.py"), base_path=base_path)
+
+                self.wandb_initialized = True
 
         if self.args.distributed:
             dist.barrier()
 
-        # torch.autograd.set_detect_anomaly(True)
-
-        # print(f'GPU{self.args.gpu} before training starts')
-
         global_step = 0
-        for epoch in range(self.args.epochs):
+        epochs = self.args.epochs
+
+        for epoch in range(epochs):
+
             if self.start_epoch is not None:
                 epoch += self.start_epoch
             self.model.train()
@@ -165,19 +163,8 @@ class Trainer(TrainerBase):
 
             }
 
-            quesid2ans = {}
-            train_acc = 0.
-            train_acc_steps = int(len(self.train_loader) * 0.05)
-            last_acc_step = 0
-
-            # print(f'GPU{self.args.gpu} before training loop')
-
             for step_i, batch in enumerate(self.train_loader):
 
-                # print(f'GPU{self.args.gpu} inside training loop')
-                # print(batch)
-
-                # self.optim.zero_grad()
                 if self.args.fp16 and _use_native_amp:
                     with autocast():
                         if self.args.distributed:
@@ -192,8 +179,6 @@ class Trainer(TrainerBase):
 
                 loss = results['loss']
 
-                # print(f'GPU{self.args.gpu} after loss')
-
                 if self.args.fp16 and _use_native_amp:
                     self.scaler.scale(loss).backward()
                 elif self.args.fp16 and _use_apex:
@@ -202,7 +187,6 @@ class Trainer(TrainerBase):
                 else:
                     loss.backward()
 
-                # print(f'GPU{self.args.gpu} after backward')
 
                 loss = loss.detach()
 
@@ -219,19 +203,28 @@ class Trainer(TrainerBase):
                         torch.nn.utils.clip_grad_norm_(
                             self.model.parameters(), self.args.clip_grad_norm)
 
-                if self.args.fp16 and _use_native_amp:
-                    self.scaler.step(self.optim)
-                    self.scaler.update()
-                else:
-                    self.optim.step()
+                update = True
+                if self.args.gradient_accumulation_steps > 1:
+                    if step_i == 0:
+                        update = False
+                    elif step_i % self.args.gradient_accumulation_steps == 0 or step_i == len(self.train_loader) - 1:
+                        update = True
+                    else:
+                        update = False
 
-                if self.lr_scheduler:
-                    self.lr_scheduler.step()
-                # self.model.zero_grad()
-                for param in self.model.parameters():
-                    param.grad = None
+                if update:
+                    if self.args.fp16 and _use_native_amp:
+                        self.scaler.step(self.optim)
+                        self.scaler.update()
+                    else:
+                        self.optim.step()
 
-                global_step += 1
+                    if self.lr_scheduler:
+                        self.lr_scheduler.step()
+                    # self.model.zero_grad()
+                    for param in self.model.parameters():
+                        param.grad = None
+                    global_step += 1
 
                 for k, v in results.items():
                     if k in epoch_results:
@@ -250,34 +243,50 @@ class Trainer(TrainerBase):
 
                 if self.verbose:
                     loss_meter.update(loss.item())
-                    desc_str = f'Epoch {epoch} | LR {lr:.6f}'
+                    desc_str = f'Epoch {epoch} | LR {lr:.6f} | Steps {global_step}'
                     desc_str += f' | Loss {loss_meter.val:4f}'
-
                     pbar.set_description(desc_str)
                     pbar.update(1)
 
-                if self.args.distributed:
-                    dist.barrier()
+            if self.args.distributed:
+                dist.barrier()
 
             if self.verbose:
                 pbar.close()
 
-                log_str = ''
+                # format ex)
+                # {'Bleu_1': 0.9999999997500004,
+                #  'Bleu_2': 0.5773502690332603,
+                #  'Bleu_3': 4.3679023223468616e-06,
+                #  'Bleu_4': 1.4287202142987477e-08,
+                #  'CIDEr': 3.333333333333333,
+                #  'METEOR': 0.43354749322305886,
+                #  'ROUGE_L': 0.75,
+                #  'SPICE': 0.6666666666666666}
 
                 # Validation
-                valid_score = self.evaluate(self.val_loader) * 100.
-                if valid_score > best_valid:
+                valid_results = self.evaluate(self.val_loader)
+
+                valid_score = valid_results['CIDEr']
+
+                if valid_score > best_valid or epoch == 0:
                     best_valid = valid_score
                     best_epoch = epoch
                     self.save("BEST")
 
-                log_str += "\nEpoch %d: Testdev %0.2f" % (epoch, valid_score)
-                log_str += "\nEpoch %d: Best %0.2f\n" % (best_epoch, best_valid)
+                log_str = ''
+
+                log_str += pformat(valid_results)
+                log_str += "\nEpoch %d: Valid CIDEr %0.4f" % (epoch, valid_score)
+                log_str += "\nEpoch %d: Best CIDEr %0.4f\n" % (best_epoch, best_valid)
 
                 wandb_log_dict = {}
                 wandb_log_dict['Train/Loss'] = epoch_results['loss'] / len(self.train_loader)
 
-                wandb_log_dict['Testdev/score'] = valid_score
+                for score_name, score in valid_results.items():
+                    wandb_log_dict[f'Valid/{score_name}'] = score
+
+                wandb_log_dict[f'Valid/best_epoch'] = best_epoch
 
                 wandb.log(wandb_log_dict, step=epoch)
 
@@ -293,16 +302,23 @@ class Trainer(TrainerBase):
             best_path = os.path.join(self.args.output, 'BEST')
             self.load(best_path)
 
-            dump_path = os.path.join(self.args.output, 'submit.json')
-            self.predict(self.test_loader, dump_path=dump_path)
+            wandb.save(best_path, base_path=self.args.output)
+            print(f'\nUploaded checkpoint {best_epoch}', best_path)
 
-            wandb.save(dump_path, base_path=self.args.output)
+            test_results = self.evaluate(self.test_loader)
 
-            wandb.log({'finished': True})
+            wandb_log_dict = {}
+            for score_name, score in test_results.items():
+                wandb_log_dict[f'Test/{score_name}'] = score
+            wandb.log(wandb_log_dict, step=epoch)
+
+            log_str = 'Test set results\n'
+            log_str += pformat(test_results)
+
+            print(log_str)
 
         if self.args.distributed:
             dist.barrier()
-            exit()
 
     def predict(self, loader, dump_path=None):
         """
@@ -313,57 +329,75 @@ class Trainer(TrainerBase):
         """
         self.model.eval()
         with torch.no_grad():
-            quesid2ans = {}
+
+            predictions = []
+            targets = []
 
             gen_kwargs = {}
-            if self.args.num_beams > 1:
-                gen_kwargs['num_beams'] = self.args.num_beams
+            gen_kwargs['num_beams'] = self.args.num_beams
+            gen_kwargs['max_length'] = self.args.gen_max_length
 
-            if self.verbose:
-                pbar = tqdm(total=len(loader), ncols=120, desc="Prediction")
-
-            for i, batch in enumerate(loader):
+            for i, batch in enumerate(tqdm(loader, ncols=120, desc="Prediction")):
 
                 if self.args.distributed:
-                    results = self.model.module.test_step(batch, **gen_kwargs)
+                    results = self.model.module.test_step(
+                        batch,
+                        **gen_kwargs)
                 else:
-                    results = self.model.test_step(batch, **gen_kwargs)
+                    results = self.model.test_step(
+                        batch,
+                        **gen_kwargs)
 
-                pred_ans = results['pred_ans']
-                ques_ids = batch['question_ids']
+                predictions.extend(results['pred'])
 
-                for qid, ans in zip(ques_ids, pred_ans):
-                    quesid2ans[qid] = ans
+                if 'targets' in batch:
+                    targets.extend(batch['targets'])
 
-                if self.verbose:
-                    pbar.update(1)
+            results = {
+                'predictions': predictions,
+                'targets': targets
+            }
 
-            if dump_path is not None:
-                print('\nsave dump at', dump_path)
-                loader.evaluator.dump_result(quesid2ans, dump_path)
-            return quesid2ans
+            return results
 
     def evaluate(self, loader, dump_path=None):
         evaluator = loader.evaluator
-        quesid2ans = self.predict(loader, dump_path)
+        results = self.predict(loader, dump_path)
+
+        predictions = results['predictions']
+        if dump_path is None:
+            targets = results['targets']
+            eval_results = evaluator.evaluate(predictions, targets)
+            return eval_results
+
+    @staticmethod
+    def oracle_score(loader):
+        evaluator = loader.evaluator
+        quesid2ans = {}
+        for i, batch in enumerate(loader):
+
+            ques_id = batch['question_ids']
+            label = batch['targets']
+
+            _, label = label.max(1)
+            for qid, l in zip(ques_id, label.cpu().numpy()):
+                ans = loader.dataset.raw_dataset.label2ans[l]
+                quesid2ans[qid] = ans
         return evaluator.evaluate(quesid2ans)
 
     def save(self, name):
         if not os.path.isdir(self.args.output):
             os.makedirs(self.args.output, exist_ok=True)
-
         torch.save(self.model.state_dict(),
                    os.path.join(self.args.output, "%s.pth" % name))
 
-    def load(self, path, loc=None, verbose=False):
-        print("Load checkpoint from %s" % path)
+    def load(self, path, loc=None):
+        print("Load model from %s" % path)
         if loc is None:
             state_dict = torch.load("%s.pth" % path)
         else:
             state_dict = torch.load("%s.pth" % path, map_location=loc)
-        result = self.model.load_state_dict(state_dict, strict=False)
-        if verbose:
-            print(result)
+        self.model.load_state_dict(state_dict)
 
 def main_worker(gpu, args):
     # GPU is assigned
@@ -375,56 +409,15 @@ def main_worker(gpu, args):
         torch.cuda.set_device(args.gpu)
         dist.init_process_group(backend='nccl')
 
-    if args.test_only:
-        print(f'Building submit test loader at GPU {gpu}')
-
-        split = f'submit_{gpu}'
-        print('Loading', split)
-
-        test_loader = get_loader(
-            args,
-            split=split, mode='val', batch_size=args.batch_size,
-            distributed=False, gpu=args.gpu,
-            workers=4,
-            topk=args.valid_topk,
-            # verbose=True
-        )
-
-        train_loader = None
-        val_loader = None
-
-        trainer = Trainer(args, train_loader, val_loader, test_loader, train=False)
-
-        dump_path = os.path.join(args.output, f'submit.json')
-        trainer.predict(test_loader, dump_path=dump_path)
-
-        if 't5' in args.backbone:
-            project_name = "VLT5_GQA"
-        elif 'bart' in args.backbone:
-            project_name = "VLBart_GQA"
-
-        wandb.init(project=project_name)
-        wandb.run.name = args.run_name
-        wandb.config.update(args)
-
-        src_dir = Path(__file__).resolve().parent
-        base_path = str(src_dir.parent)
-        src_dir = str(src_dir)
-        wandb.save(os.path.join(src_dir + "/*.py"), base_path=base_path)
-
-        wandb.save(dump_path, base_path=args.output)
-        print('Uploaded', dump_path)
-
-    else:
-        print(f'Building train loader at GPU {gpu}')
-        train_loader = get_loader(
-            args,
-            split=args.train, mode='train', batch_size=args.batch_size,
-            distributed=args.distributed, gpu=args.gpu,
-            workers=args.num_workers,
-            topk=args.train_topk,
-        )
-
+    print(f'Building train loader at GPU {gpu}')
+    train_loader = get_loader(
+        args,
+        split=args.train, mode='train', batch_size=args.batch_size,
+        distributed=args.distributed, gpu=args.gpu,
+        workers=args.num_workers,
+        topk=args.train_topk,
+    )
+    if gpu == 0:
         if args.valid_batch_size is not None:
             valid_batch_size = args.valid_batch_size
         else:
@@ -433,22 +426,28 @@ def main_worker(gpu, args):
         val_loader = get_loader(
             args,
             split=args.valid, mode='val', batch_size=valid_batch_size,
-            distributed=args.distributed, gpu=args.gpu,
+            distributed=False, gpu=args.gpu,
             workers=4,
             topk=args.valid_topk,
         )
+        print('# len val loader:', len(val_loader))
 
         print(f'Building test loader at GPU {gpu}')
         test_loader = get_loader(
             args,
             split=args.test, mode='val', batch_size=valid_batch_size,
-            distributed=args.distributed, gpu=args.gpu,
+            distributed=False, gpu=args.gpu,
             workers=4,
             topk=args.valid_topk,
         )
+    else:
+        val_loader = None
+        test_loader = None
 
-        trainer = Trainer(args, train_loader, val_loader, test_loader, train=True)
-        trainer.train()
+    trainer = Trainer(args, train_loader, val_loader, test_loader, train=True)
+    trainer.train()
+
+
 
 if __name__ == "__main__":
 
@@ -467,13 +466,9 @@ if __name__ == "__main__":
             comments.append(args.comment)
         comment = '_'.join(comments)
 
-        # if not args.test:
         from datetime import datetime
         current_time = datetime.now().strftime('%b%d_%H-%M')
-        project_dir = Path(__file__).resolve().parent.parent
 
-        log_dir = project_dir.joinpath('logs')
-        log_dir = log_dir.joinpath('GQA')
         run_name = f'{current_time}_GPU{args.world_size}'
         if len(comments) > 0:
             run_name += f'_{comment}'
