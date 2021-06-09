@@ -3,6 +3,9 @@
 * Authors: [Jaemin Cho](https://j-min.io), [Jie Lei](https://www.cs.unc.edu/~jielei/), [Hao Tan](https://www.cs.unc.edu/~airsplay/), and [Mohit Bansal](https://www.cs.unc.edu/~mbansal/)
 * [Paper](https://arxiv.org/abs/2102.02779) (To appear in [ICML 2021](https://icml.cc/Conferences/2021))
 
+
+![teaser image](./assets/teaser_square.png)
+
 ## Setup
 ```
 # Create python environment (optional)
@@ -51,8 +54,8 @@ python -c "import language_evaluation; language_evaluation.download('coco')"
         param.py                                              <= (argparse) configuration
         tokenization.py                                       <= custom tokenizer
         utils.py, dist_utils.py                               <= utility functions
-    snap/                                                   <= store weight checkpoints
-    scripts/                                                <= bash scripts for pretraining and finetuning
+    snap/                                                     <= store weight checkpoints
+    scripts/                                                  <= bash scripts for pretraining and finetuning
 ```
 
 ## API
@@ -115,7 +118,7 @@ model.train_step(train_batch)
 
 # Inference
 test_batch = next(iter(test_loader))
-model.test_step(valid_batch)
+model.test_step(test_batch)
 >>> {'pred_ans': ... }
 ```
 
@@ -129,16 +132,16 @@ NEW_TASK.py # Define a trainer which inherits TrainerBase (trainer_base.py)
 
 
 ## Pretrained Models
-- Download `./snap` from [Google Drive](https://drive.google.com/drive/folders/1_SBj4sZ0gUqfBon1gFBiNRAmfHv5w_ph?usp=sharing)
-* `./snap/pretrain/VL-T5/Epoch30.pth`: VL-T5 pretrained for 30 epochs on COCO/VG
-* `./snap/pretrain/VL-BART/Epoch30.pth`: VL-BART pretrained for 30 epochs on COCO/VG
+- Download `snap/` from [Google Drive](https://drive.google.com/drive/folders/1_SBj4sZ0gUqfBon1gFBiNRAmfHv5w_ph?usp=sharing)
+* `VL-T5/snap/pretrain/VL-T5/Epoch30.pth`: VL-T5 pretrained for 30 epochs on COCO+VG
+* `VL-T5/snap/pretrain/VL-BART/Epoch30.pth`: VL-BART pretrained for 30 epochs on COCO+VG
 
 ## Dataset Preparation / Feature extraction
-- Download `./datasets` from [Google Drive](https://drive.google.com/drive/folders/1MBBhlkP83VMKS2Qe0SmFfzkHhMpIG5wf?usp=sharing)
+- Download `datasets/` from [Google Drive](https://drive.google.com/drive/folders/1MBBhlkP83VMKS2Qe0SmFfzkHhMpIG5wf?usp=sharing)
   - Multi30K only
     - `git clone --recursive https://github.com/multi30k/dataset ./datasets/multi30k-dataset`
-    - unzip `train.en.gz`, `val.en.gz`, `test_2017_flickr.en.gz`, `test_2018_flickr.en.gz` in `multi30k-dataset/data/task1/raw/`
-    - unzip `train.de.gz`, `val.de.gz`, `test_2017_flickr.de.gz`, `test_2018_flickr.de.gz` in `multi30k-dataset/data/task1/raw/`
+    - unzip `train.en.gz`, `val.en.gz`, `test_2017_flickr.en.gz`, `test_2018_flickr.en.gz` in `./datasets/multi30k-dataset/data/task1/raw/`
+    - unzip `train.de.gz`, `val.de.gz`, `test_2017_flickr.de.gz`, `test_2018_flickr.de.gz` in `./datasets/multi30k-dataset/data/task1/raw/`
 - For manual feature extraction, please checkout [./feature_extraction](./feature_extraction)
 
 ## Pretraining on COCO+VG
