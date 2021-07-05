@@ -14,8 +14,8 @@ from copy import deepcopy
 
 from torch.utils.data.distributed import DistributedSampler
 
-from transformers import T5Tokenizer, BartTokenizer
-from tokenization import VLT5Tokenizer
+from transformers import T5TokenizerFast, BartTokenizer
+from tokenization import VLT5TokenizerFast
 
 from utils import xywh_to_xyxy, get_iou
 from refcoco_utils import REFER
@@ -52,9 +52,9 @@ class RefCOCOFineTuneDataset(Dataset):
 
         if 't5' in self.args.backbone:
             if self.args.use_vision:
-                self.tokenizer = VLT5Tokenizer.from_pretrained(args.backbone)
+                self.tokenizer = VLT5TokenizerFast.from_pretrained(args.backbone)
             else:
-                self.tokenizer = T5Tokenizer.from_pretrained(args.backbone)
+                self.tokenizer = T5TokenizerFast.from_pretrained(args.backbone)
 
         elif 'bart' in self.args.backbone:
             self.tokenizer = BartTokenizer.from_pretrained(

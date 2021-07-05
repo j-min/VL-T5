@@ -62,6 +62,8 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument("--test", default=None)
     parser.add_argument('--test_only', action='store_true')
 
+    parser.add_argument('--submit', action='store_true')
+
     # Quick experiments
     parser.add_argument('--train_topk', type=int, default=-1)
     parser.add_argument('--valid_topk', type=int, default=-1)
@@ -135,6 +137,8 @@ def parse_args(parse=True, **optional_kwargs):
     # Pretraining
     parser.add_argument('--ground_upsample', type=int, default=1)
     parser.add_argument('--ground_weight', type=int, default=1)
+    parser.add_argument('--itm_cocoonly', default=True, type=str2bool)
+    parser.add_argument('--single_vqa_prefix', action='store_true')
 
     # COCO Caption
     parser.add_argument('--no_prefix', action='store_true')
@@ -144,9 +148,6 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument("--answer_normalize", action='store_true')
     parser.add_argument("--classifier", action='store_true')
     parser.add_argument("--test_answerable", action='store_true')
-
-    # VCR
-    parser.add_argument('--unisex_names', action='store_true')
 
     # RefCOCOg
     parser.add_argument('--RefCOCO_GT', action='store_true')

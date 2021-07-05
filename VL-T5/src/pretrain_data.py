@@ -14,8 +14,8 @@ from torch.utils.data.distributed import DistributedSampler
 from copy import deepcopy
 
 
-from transformers import T5Tokenizer, BartTokenizer
-from tokenization import VLT5Tokenizer
+from transformers import T5Tokenizer, BartTokenizer, T5TokenizerFast, BartTokenizerFast
+from tokenization import VLT5Tokenizer, VLT5TokenizerFast
 
 import preprocess
 from qa_answer_table import AnswerTable
@@ -184,6 +184,11 @@ class PretrainDataset(Dataset):
         if self.verbose:
             print('Data sources: ', self.sources)
 
+        # Answer Table from LXMERT (Could be removed)
+        self.answer_table = AnswerTable()
+        if self.verbose:
+            print("Load an answer table of size %d." % (len(self.answer_table.ans2id_map())))
+
         self.img_ids_to_source = {}
 
         losses = args.losses.split(',')
@@ -242,7 +247,7 @@ class PretrainDataset(Dataset):
         with Pool(8) as pool:
             if self.verbose:
                 data = [datum for _data in tqdm(
-                    pool.imap(get_datum, data), total=len(data), ncols=100) for datum in _data]
+                    pool.imap(get_datum, data), total=len(data), ncols=100, desc="Creating pretrainig data examples") for datum in _data]
             else:
                 data = [datum for _data in pool.imap(
                     get_datum, data) for datum in _data]
@@ -289,10 +294,14 @@ class PretrainDataset(Dataset):
 
         if 't5' in self.args.backbone:
             if self.args.use_vision:
-                self.tokenizer = VLT5Tokenizer.from_pretrained(
+                # self.tokenizer = VLT5Tokenizer.from_pretrained(
+                #     args.backbone, do_lower_case=args.do_lower_case)
+                self.tokenizer = VLT5TokenizerFast.from_pretrained(
                     args.backbone, do_lower_case=args.do_lower_case)
             else:
-                self.tokenizer = T5Tokenizer.from_pretrained(
+                # self.tokenizer = T5Tokenizer.from_pretrained(
+                #     args.backbone, do_lower_case=args.do_lower_case)
+                self.tokenizer = T5TokenizerFast.from_pretrained(
                     args.backbone, do_lower_case=args.do_lower_case)
         elif 'bart' in self.args.backbone:
             self.tokenizer = BartTokenizer.from_pretrained(args.backbone)
@@ -371,7 +380,10 @@ class PretrainDataset(Dataset):
 
                 sent = datum['sent']
 
-                source_text = f"{text_source}: {sent}"
+                if self.args.single_vqa_prefix:
+                    source_text = f"vqa: {sent}"
+                else:
+                    source_text = f"{text_source}: {sent}"
                 input_tokens = [source_text]
                 if self.args.oscar_tags:
                     input_tokens.append('tags:')
@@ -722,9 +734,6 @@ class PretrainDataset(Dataset):
         boxes = torch.zeros(B, V_L, 4, dtype=torch.float)
         vis_feats = torch.zeros(B, V_L, feat_dim, dtype=torch.float)
 
-        if 'feat' in args.losses:
-            feat_labels = torch.zeros(B, V_L, feat_dim, dtype=torch.float)
-
         loss_weights = torch.ones(B, dtype=torch.float)
 
         sentences = []
@@ -741,9 +750,6 @@ class PretrainDataset(Dataset):
 
             boxes[i] += entry['boxes']
             vis_feats[i] += entry['vis_feats']
-
-            if 'feat_label' in entry:
-                feat_labels[i] += entry['feat_label']
 
             if 'ans' in entry:
                 ans.append(entry['ans'])
@@ -770,6 +776,17 @@ class PretrainDataset(Dataset):
         batch_entry['source_text'] = source_text
         batch_entry['target_text'] = target_text
 
+        batch_entry['input_ids'] = input_ids
+        batch_entry['target_ids'] = target_ids
+
+        batch_entry['boxes'] = boxes
+        batch_entry['vis_feats'] = vis_feats
+
+        batch_entry['loss_weights'] = loss_weights
+
+        batch_entry['uid'] = uids
+        batch_entry['sent'] = sentences
+
         return batch_entry
 
 
@@ -785,7 +802,6 @@ def get_loader(args, split='vgnococo', mode='train',
         topk=topk,
         verbose=verbose,
         args=args,
-        distributed=distributed,
         is_train=(mode == 'train'),
         )
 

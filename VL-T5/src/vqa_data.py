@@ -15,8 +15,8 @@ import re
 
 from torch.utils.data.distributed import DistributedSampler
 
-from transformers import T5Tokenizer, BartTokenizer
-from tokenization import VLT5Tokenizer
+from transformers import T5TokenizerFast, BartTokenizer
+from tokenization import VLT5TokenizerFast
 
 
 project_dir = Path(__file__).resolve().parent.parent  # VLT5
@@ -47,12 +47,12 @@ class VQAFineTuneDataset(Dataset):
 
         if 't5' in self.args.backbone:
             if self.args.use_vision:
-                self.tokenizer = VLT5Tokenizer.from_pretrained(
+                self.tokenizer = VLT5TokenizerFast.from_pretrained(
                     args.backbone,
                     max_length=self.args.max_text_length,
                     do_lower_case=self.args.do_lower_case)
             else:
-                self.tokenizer = T5Tokenizer.from_pretrained(
+                self.tokenizer = T5TokenizerFast.from_pretrained(
                     args.backbone,
                     max_length=self.args.max_text_length,
                     do_lower_case=self.args.do_lower_case)

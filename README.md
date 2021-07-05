@@ -147,26 +147,74 @@ NEW_TASK.py # Define a trainer which inherits TrainerBase (trainer_base.py)
 ## Pretraining on COCO+VG
 ```
 # with 4 gpus
-bash scripts/pretrain_VLT5.sh 4
-bash scripts/pretrain_VLBart.sh 4
+cd VL-T5/
+
+bash scripts/COCOVG_pretrain_VLT5.sh 4
+bash scripts/COCOVG_pretrain_VLBart.sh 4
 ```
 
 ## Downstream tasks
-- To be updated
 
 ### [VQA](https://visualqa.org/)
+```
+# Finetuning with 4 gpus
+cd VL-T5/
+bash scripts/VQA_VLT5.sh 4
+bash scripts/VQA_VLBart.sh 4
+```
 
 ### [GQA](https://cs.stanford.edu/people/dorarad/gqa/)
+```
+# Finetuning with 4 gpus
+cd VL-T5/
+bash scripts/GQA_VLT5.sh 4
+bash scripts/GQA_VLBart.sh 4
+```
 
 ### [NLVR2](http://lil.nlp.cornell.edu/nlvr/)
+```
+# Finetuning with 4 gpus
+cd VL-T5/
+bash scripts/NLVR_VLT5.sh 4
+bash scripts/NLVR_VLBart.sh 4
+```
 
 ### [RefCOCOg](https://github.com/mjhucla/Google_Refexp_toolbox)
+```
+# Finetuning with 4 gpus
+cd VL-T5/
+bash scripts/RefCOCOg_VLT5.sh 4
+bash scripts/RefCOCOG_VLBart.sh 4
+```
 
 ### [VCR](https://visualcommonsense.com/)
+```
+# Pretraining on VCR with 4 gpus (optional)
+cd VL-T5/
+bash scripts/VCR_pretrain_VLT5.sh 4
+bash scripts/VCR_pretrain_VLBart.sh 4
+
+# Finetuning with 4 gpus
+cd VL-T5/
+bash scripts/VCR_VLT5.sh 4
+bash scripts/VCR_VLBart.sh 4
+```
 
 ### [COCO Caption](https://cocodataset.org/)
+```
+# Finetuning with 4 gpus
+cd VL-T5/
+bash scripts/COCOCaption_VLT5.sh 4
+bash scripts/COCOCaption_VLBart.sh 4
+```
 
 ### [Multi30K](https://github.com/multi30k/dataset)
+```
+# Finetuning with 4 gpus
+cd VL-T5/
+bash scripts/Multi30K_VLT5.sh 4
+bash scripts/Multi30K_VLBart.sh 4
+```
 
 
 # Reference
