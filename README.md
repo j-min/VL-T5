@@ -67,7 +67,7 @@ sys.path.append('./VL-T5/src')
 from param import parse_args
 args = parse_args(
     backbone='t5-base' # Backbone architecture
-    load='./snap/pretrain/VL-T5/Epoch30' # Pretrained checkpoint
+    load='./snap/pretrain/VLT5/Epoch30' # Pretrained checkpoint
     parse=False, # False for interactive env (ex. jupyter)
 )
 # Assign GPU
@@ -133,8 +133,8 @@ NEW_TASK.py # Define a trainer which inherits TrainerBase (trainer_base.py)
 
 ## Pretrained Models
 - Download `snap/` from [Google Drive](https://drive.google.com/drive/folders/1_SBj4sZ0gUqfBon1gFBiNRAmfHv5w_ph?usp=sharing)
-* `VL-T5/snap/pretrain/VL-T5/Epoch30.pth`: VL-T5 pretrained for 30 epochs on COCO+VG
-* `VL-T5/snap/pretrain/VL-BART/Epoch30.pth`: VL-BART pretrained for 30 epochs on COCO+VG
+* `VL-T5/snap/pretrain/VLT5/Epoch30.pth`: VL-T5 pretrained for 30 epochs on COCO+VG
+* `VL-T5/snap/pretrain/VLBart/Epoch30.pth`: VL-BART pretrained for 30 epochs on COCO+VG
 
 ## Dataset Preparation / Feature extraction
 - Download `datasets/` from [Google Drive](https://drive.google.com/drive/folders/1MBBhlkP83VMKS2Qe0SmFfzkHhMpIG5wf?usp=sharing)
