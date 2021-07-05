@@ -5,7 +5,7 @@ from copy import deepcopy
 
 
 def corrupt_spans(text, mask_ratio=0.15, prefix=None):
-    """Masked Language Modeling with corrupted span prediction
+    """T5-style Masked Language Modeling with corrupted span prediction
     Args:
         text
 

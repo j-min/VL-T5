@@ -359,7 +359,7 @@ class Trainer(TrainerBase):
                 log_str += f" Q -> AR {valid_Q_AR:.2f}%"
 
                 #log_str += "\nEpoch %d: Valid Q -> AR %0.2f" % (epoch, valid_Q_AR)
-                log_str += f"\nEpoch {best_epoch}: Best  Q -> AR {best_valid_Q_AR:.2f}%\n"
+                log_str += f"\nBest Epoch {best_epoch}: Q -> AR {best_valid_Q_AR:.2f}%\n"
 
                 wandb_log_dict = {}
                 # wandb_log_dict['Train/Loss'] = loss_meter.val
@@ -383,10 +383,11 @@ class Trainer(TrainerBase):
         if self.verbose:
             self.save("LAST")
 
-            # Test Set
-            best_path = os.path.join(self.args.output, 'BEST')
-            self.load(best_path)
+        # Test Set
+        best_path = os.path.join(self.args.output, 'BEST')
+        self.load(best_path)
 
+        if self.verbose:
             dump_path = os.path.join(self.args.output, 'test_submit.csv')
 
             print('Dumping test set results at', dump_path)
@@ -430,12 +431,18 @@ class Trainer(TrainerBase):
         if self.args.distributed:
             dist.barrier()
 
+        # print(f'GPU{self.args.gpu} # uid2results: {len(uid2results)}')
+
         uid2results_list = all_gather(uid2results)
+
+        # print(f'GPU{self.args.gpu} # uid2results_list: {len(uid2results_list)}')
 
         uid2results = {}
         for uid2res in uid2results_list:
             for k, v in uid2res.items():
                 uid2results[k] = v
+
+        # print(f'GPU{self.args.gpu} after merge # uid2results: {len(uid2results)}')
 
         Q_A_results = 0
         QA_R_results = 0
@@ -526,21 +533,6 @@ class Trainer(TrainerBase):
 
         return submit_dict
 
-    def save(self, name):
-        if not os.path.isdir(self.args.output):
-            os.makedirs(self.args.output, exist_ok=True)
-        torch.save(self.model.state_dict(),
-                   os.path.join(self.args.output, "%s.pth" % name))
-
-    def load(self, path, loc=None):
-        print("Load model from %s" % path)
-        if loc is None:
-            state_dict = torch.load("%s.pth" % path)
-        else:
-            state_dict = torch.load("%s.pth" % path, map_location=loc)
-        self.model.load_state_dict(state_dict)
-
-
 def main_worker(gpu, args):
     # GPU is assigned
     args.gpu = gpu
@@ -551,32 +543,32 @@ def main_worker(gpu, args):
         torch.cuda.set_device(args.gpu)
         dist.init_process_group(backend='nccl')
 
+    train_loader = val_loader = []
+    if not args.test_only:
+        print(f'Building train loader at GPU {gpu}')
+        train_loader = get_loader(
+            args,
+            split=args.train, mode='train', batch_size=args.batch_size,
+            distributed=args.distributed, gpu=args.gpu,
+            workers=args.num_workers,
+            topk=args.train_topk,
+        )
 
-    print(f'Building train loader at GPU {gpu}')
-    train_loader = get_loader(
-        args,
-        # 'mscoco_minival', mode='train', batch_size=args.batch_size,
-        split=args.train, mode='train', batch_size=args.batch_size,
-        distributed=args.distributed, gpu=args.gpu,
-        workers=args.num_workers,
-        topk=args.train_topk,
-    )
-
-    print(f'Building val loader at GPU {gpu}')
-    val_loader = get_loader(
-        args,
-        split=args.valid, mode='val', batch_size=args.batch_size,
-        distributed=args.distributed, gpu=args.gpu,
-        workers=args.num_workers,
-        topk=args.valid_topk,
-    )
+        print(f'Building val loader at GPU {gpu}')
+        val_loader = get_loader(
+            args,
+            split=args.valid, mode='val', batch_size=args.valid_batch_size,
+            distributed=args.distributed, gpu=args.gpu,
+            workers=args.num_workers,
+            topk=args.valid_topk,
+        )
 
     test_loader = None
     if gpu == 0:
         print(f'Building test loader at GPU {gpu}')
         test_loader = get_loader(
             args,
-            split=args.test, mode='val', batch_size=args.batch_size,
+            split=args.test, mode='val', batch_size=args.valid_batch_size,
             distributed=False, gpu=args.gpu,
             workers=args.num_workers,
             topk=args.valid_topk,

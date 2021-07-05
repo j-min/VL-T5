@@ -15,8 +15,8 @@ from copy import deepcopy
 
 from torch.utils.data.distributed import DistributedSampler
 
-from transformers import T5Tokenizer, BartTokenizer
-from tokenization import VLT5Tokenizer
+from transformers import T5TokenizerFast, BartTokenizer
+from tokenization import VLT5TokenizerFast, VLT5Tokenizer
 
 project_dir = Path(__file__).resolve().parent.parent  # VLT5
 workspace_dir = project_dir.parent
@@ -44,12 +44,12 @@ class VCRFineTuneDataset(Dataset):
 
         if 't5' in self.args.backbone:
             if self.args.use_vision:
-                self.tokenizer = VLT5Tokenizer.from_pretrained(
+                self.tokenizer = VLT5TokenizerFast.from_pretrained(
                     args.backbone,
                     max_length=self.args.max_text_length,
                     do_lower_case=self.args.do_lower_case)
             else:
-                self.tokenizer = T5Tokenizer.from_pretrained(
+                self.tokenizer = T5TokenizerFast.from_pretrained(
                     args.backbone,
                     max_length=self.args.max_text_length,
                     do_lower_case=self.args.do_lower_case)
@@ -64,13 +64,6 @@ class VCRFineTuneDataset(Dataset):
                     [f'<vis_extra_id_{i}>' for i in range(100-1, -1, -1)]
             special_tokens_dict = {'additional_special_tokens': additional_special_tokens}
             num_added_toks = self.tokenizer.add_special_tokens(special_tokens_dict)
-
-        self.unisex_names = []
-        with open(dataset_dir.joinpath("VCR/unisex_names_table.csv")) as csv_file:
-            csv_reader = csv.reader(csv_file, delimiter=",")
-            for row in csv_reader:
-                if row[1] != "name":
-                    self.unisex_names.append(row[1])
 
         self.img_ids_to_source = {}
         data_info_dicts = []
@@ -125,7 +118,7 @@ class VCRFineTuneDataset(Dataset):
         datum = self.data[idx]
 
         uid = f"{datum['img_id']}_{datum['question_number']}"
-        datum['uid'] = uid
+        out_dict['uid'] = uid
 
         test = 'test' in datum['annot_id']
         out_dict['is_test'] = test
@@ -169,12 +162,10 @@ class VCRFineTuneDataset(Dataset):
         boxes[:, (1, 3)] /= img_h
 
         np.testing.assert_array_less(boxes, 1+1e-5)
-        # np.testing.assert_array_less(boxes, 1+5e-2)
         np.testing.assert_array_less(-boxes, 0+1e-5)
         boxes = torch.from_numpy(boxes)
 
-        assert boxes.size() == (36, 4), (boxes.size(),
-                                            datum['img_id'], gt_boxes.shape, pred_boxes.shape)
+        assert boxes.size() == (36, 4), (boxes.size(), datum['img_id'], gt_boxes.shape, pred_boxes.shape)
 
         boxes.clamp_(min=0.0, max=1.0)
 
@@ -205,16 +196,9 @@ class VCRFineTuneDataset(Dataset):
             out_dict['answer_label'] = answer_label
             out_dict['rationale_label'] = rationale_label
 
-        # with open(vcr_img_dir.joinpath(datum['metadata_fn'])) as f:
-        #     metadata = json.load(f)
-        # metadata = self.metadata[idx]
-
         object_tags = f_GT[f'{img_id}/captions'][()].flatten().tolist()
 
         object_tags = [tag.decode() if isinstance(tag, bytes) else tag for tag in object_tags]
-
-        if self.args.unisex_names:
-            object_tags = [random.choice(self.unisex_names) if tag == 'person' else tag for tag in object_tags]
 
         out_dict['annot_id'] = datum['annot_id']
 
@@ -222,14 +206,6 @@ class VCRFineTuneDataset(Dataset):
             tokens = []
             for token in tokenized[:max_len]:
                 if isinstance(token, list):
-                    # if len(token) == 1:
-                    #     id = token[0]
-                    #     # if names is not None:
-                    #     name = names[id]
-                    #     tokens.append(name)
-                    #     # token = f'<extra_id_{id}>'
-                    #     token = str(id)
-
                     for i, id in enumerate(token):
                         # if names is not None:
                         name = names[id]
@@ -237,17 +213,13 @@ class VCRFineTuneDataset(Dataset):
                         if i > 0:
                             tokens.append('and')
 
-                        if self.args.unisex_names:
-                            tokens.append(name)
-                        else:
-                            tokens.append(name)
-                            token = f'<vis_extra_id_{id}>'
-                            # token = str(id)
-                            tokens.append(token)
+                        tokens.append(name)
+                        token = f'<vis_extra_id_{id}>'
+                        # token = str(id)
+                        tokens.append(token)
 
                 else:
                     tokens.append(token)
-        #         print(tokens)
 
             tokens = tokens[:max_len]
 
@@ -377,6 +349,7 @@ class VCRFineTuneDataset(Dataset):
 
             annot_ids.append(entry['annot_id'])
             img_ids.append(entry['img_id'])
+            uids.append(entry['uid'])
 
         if args.use_vision:
             batch_entry['boxes'] = boxes

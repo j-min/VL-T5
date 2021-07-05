@@ -102,16 +102,19 @@ class TrainerBase(object):
         return model
 
     def create_tokenizer(self, **kwargs):
-        from transformers import T5Tokenizer, BartTokenizer
-        from tokenization import VLT5Tokenizer
+        from transformers import T5Tokenizer, BartTokenizer, T5TokenizerFast, BartTokenizerFast
+        from tokenization import VLT5Tokenizer, VLT5TokenizerFast
 
         if 't5' in self.args.tokenizer:
             if self.args.use_vision:
-                tokenizer_class = VLT5Tokenizer
+                # tokenizer_class = VLT5Tokenizer
+                tokenizer_class = VLT5TokenizerFast
             else:
-                tokenizer_class = T5Tokenizer
+                # tokenizer_class = T5Tokenizer
+                tokenizer_class = T5TokenizerFast
         elif 'bart' in self.args.tokenizer:
             tokenizer_class = BartTokenizer
+            # tokenizer_class = BartTokenizerFast
 
         tokenizer_name = self.args.backbone
 
@@ -205,9 +208,27 @@ class TrainerBase(object):
     def evaluate(self):
         pass
 
-    def save(self):
-        pass
+    def save(self, name):
+        if not os.path.isdir(self.args.output):
+            os.makedirs(self.args.output, exist_ok=True)
+        torch.save(self.model.state_dict(), os.path.join(self.args.output, "%s.pth" % name))
 
-    def load(self):
-        pass
+    def load(self, path, loc=None):
+        if loc is None and hasattr(self.args, 'gpu'):
+            loc = f'cuda:{self.args.gpu}'
+        state_dict = torch.load("%s.pth" % path, map_location=loc)
 
+        original_keys = list(state_dict.keys())
+        for key in original_keys:
+            if key.startswith("module.vis_encoder."):
+                new_key = 'module.encoder.' + key[len("module.vis_encoder."):]
+                state_dict[new_key] = state_dict.pop(key)
+
+            if key.startswith("module.model.vis_encoder."):
+                new_key = 'module.model.encoder.' + key[len("module.model.vis_encoder."):]
+                state_dict[new_key] = state_dict.pop(key)
+
+        results = self.model.load_state_dict(state_dict, strict=False)
+        if self.verbose:
+            print('Model loaded from ', path)
+            pprint(results)

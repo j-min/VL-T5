@@ -19,6 +19,7 @@ class VLT5VCR(VLT5):
         vis_pos = batch['boxes'].to(device)
 
         B = vis_pos.size(0)
+        V_L = vis_pos.size(1)
 
         log_train_accuracy = batch['log_train_accuracy']
 
@@ -28,8 +29,8 @@ class VLT5VCR(VLT5):
         qa_input_ids = batch['qa_input_ids'].to(device)
         qa_target_ids = batch['qa_target_ids'].to(device)
 
-        vis_feats = vis_feats.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 2048)
-        vis_pos = vis_pos.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 4)
+        vis_feats = vis_feats.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 2048)
+        vis_pos = vis_pos.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 4)
 
         output = self(
             input_ids=qa_input_ids,
@@ -104,13 +105,14 @@ class VLT5VCR(VLT5):
         vis_pos = batch['boxes'].to(device)
 
         B = vis_pos.size(0)
+        V_L = vis_pos.size(1)
 
         result = {}
 
         vis_feats = vis_feats.unsqueeze(
-            1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 2048)
+            1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 2048)
         vis_pos = vis_pos.unsqueeze(
-            1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 4)
+            1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 4)
 
 
         # QA
@@ -176,9 +178,10 @@ class VLT5VCR(VLT5):
         vis_pos = batch['boxes'].to(device)
 
         B = vis_pos.size(0)
+        V_L = vis_pos.size(1)
 
-        vis_feats = vis_feats.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 2048)
-        vis_pos = vis_pos.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 4)
+        vis_feats = vis_feats.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 2048)
+        vis_pos = vis_pos.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 4)
 
         result = {}
 
@@ -256,6 +259,7 @@ class VLBartVCR(VLBart):
         vis_pos = batch['boxes'].to(device)
 
         B = vis_pos.size(0)
+        V_L = vis_pos.size(1)
 
         log_train_accuracy = batch['log_train_accuracy']
 
@@ -265,8 +269,8 @@ class VLBartVCR(VLBart):
         qa_input_ids = batch['qa_input_ids'].to(device)
         qa_target_ids = batch['qa_target_ids'].to(device)
 
-        vis_feats = vis_feats.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 2048)
-        vis_pos = vis_pos.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 4)
+        vis_feats = vis_feats.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 2048)
+        vis_pos = vis_pos.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 4)
 
         output = self(
             input_ids=qa_input_ids,
@@ -337,13 +341,14 @@ class VLBartVCR(VLBart):
         vis_pos = batch['boxes'].to(device)
 
         B = vis_pos.size(0)
+        V_L = vis_pos.size(1)
 
         result = {}
 
         vis_feats = vis_feats.unsqueeze(
-            1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 2048)
+            1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 2048)
         vis_pos = vis_pos.unsqueeze(
-            1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 4)
+            1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 4)
 
 
         # QA
@@ -412,9 +417,10 @@ class VLBartVCR(VLBart):
         vis_pos = batch['boxes'].to(device)
 
         B = vis_pos.size(0)
+        V_L = vis_pos.size(1)
 
-        vis_feats = vis_feats.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 2048)
-        vis_pos = vis_pos.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, 36, 4)
+        vis_feats = vis_feats.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 2048)
+        vis_pos = vis_pos.unsqueeze(1).expand(-1, 4, -1, -1).contiguous().view(B*4, V_L, 4)
 
         result = {}
 

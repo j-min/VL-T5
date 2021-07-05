@@ -14,8 +14,8 @@ import numpy as np
 from torch.utils.data.distributed import DistributedSampler
 from copy import deepcopy
 
-from transformers import T5Tokenizer, BartTokenizer
-from tokenization import VLT5Tokenizer
+from transformers import T5TokenizerFast, BartTokenizer
+from tokenization import VLT5TokenizerFast
 
 import preprocess
 from qa_answer_table import AnswerTable
@@ -85,12 +85,12 @@ class VCRPretrainDataset(Dataset):
 
         if 't5' in self.args.backbone:
             if self.args.use_vision:
-                self.tokenizer = VLT5Tokenizer.from_pretrained(
+                self.tokenizer = VLT5TokenizerFast.from_pretrained(
                     args.backbone,
                     max_length=self.args.max_text_length,
                     do_lower_case=self.args.do_lower_case)
             else:
-                self.tokenizer = T5Tokenizer.from_pretrained(
+                self.tokenizer = T5TokenizerFast.from_pretrained(
                     args.backbone,
                     max_length=self.args.max_text_length,
                     do_lower_case=self.args.do_lower_case)
@@ -105,13 +105,6 @@ class VCRPretrainDataset(Dataset):
                         [f'<vis_extra_id_{i}>' for i in range(100-1, -1, -1)]
                 special_tokens_dict = {'additional_special_tokens': additional_special_tokens}
                 num_added_toks = self.tokenizer.add_special_tokens(special_tokens_dict)
-
-        self.unisex_names = []
-        with open(dataset_dir.joinpath("VCR/unisex_names_table.csv")) as csv_file:
-            csv_reader = csv.reader(csv_file, delimiter=",")
-            for row in csv_reader:
-                if row[1] != "name":
-                    self.unisex_names.append(row[1])
 
         self.losses = args.losses.split(',')
 
@@ -277,10 +270,6 @@ class VCRPretrainDataset(Dataset):
         object_tags = [tag.decode() if isinstance(tag, bytes)
                        else tag for tag in object_tags]
 
-        if self.args.unisex_names:
-            object_tags = [random.choice(
-                self.unisex_names) if tag == 'person' else tag for tag in object_tags]
-
         out_dict['annot_id'] = datum['annot_id']
 
         def flat(tokenized, names=None, max_len=None):
@@ -294,10 +283,7 @@ class VCRPretrainDataset(Dataset):
                         if i > 0:
                             tokens.append('and')
 
-                        if self.args.unisex_names:
-                            tokens.append(name)
-                        else:
-                            tokens.append(name)
+                        tokens.append(name)
                         if 't5' in self.args.backbone or 'bart' in self.args.backbone:
                             token = f'<vis_extra_id_{id}>'
                             # token = str(id)

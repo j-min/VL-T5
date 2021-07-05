@@ -1,10 +1,8 @@
 # The name of experiment
 name=VLT5
 
-# Create dirs and make backup
 output=snap/pretrain/$name
 
-# Pre-training
 PYTHONPATH=$PYTHONPATH:./src \
 python -m torch.distributed.launch \
     --nproc_per_node=$1 \

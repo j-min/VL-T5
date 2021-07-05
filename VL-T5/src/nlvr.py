@@ -393,20 +393,6 @@ class Trainer(TrainerBase):
         quesid2ans = self.predict(loader, dump_path)
         return evaluator.evaluate(quesid2ans)
 
-    def save(self, name):
-        if not os.path.isdir(self.args.output):
-            os.makedirs(self.args.output, exist_ok=True)
-        torch.save(self.model.state_dict(),
-                   os.path.join(self.args.output, "%s.pth" % name))
-
-    def load(self, path, loc=None):
-        print("Load model from %s" % path)
-        if loc is None:
-            state_dict = torch.load("%s.pth" % path)
-        else:
-            state_dict = torch.load("%s.pth" % path, map_location=loc)
-        self.model.load_state_dict(state_dict)
-
 
 def main_worker(gpu, args):
     # GPU is assigned
