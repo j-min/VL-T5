@@ -2,7 +2,7 @@
 
 * Authors: [Jaemin Cho](https://j-min.io), [Jie Lei](https://www.cs.unc.edu/~jielei/), [Hao Tan](https://www.cs.unc.edu/~airsplay/), and [Mohit Bansal](https://www.cs.unc.edu/~mbansal/)
 * [Paper](https://arxiv.org/abs/2102.02779) (To appear in [ICML 2021](https://icml.cc/Conferences/2021))
-
+* [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/j-min/VL-T5/blob/main/inference_example.ipynb)
 
 ![teaser image](./assets/teaser_square.png)
 
@@ -128,7 +128,6 @@ NEW_TASK_model.py # Define a VLT5NewTask/VLBartNewTask model which inherits VLT5
 NEW_TASK_data.py # Define Dataset/DataLoader/Evaluator
 NEW_TASK.py # Define a trainer which inherits TrainerBase (trainer_base.py)
 ```
-
 
 
 ## Pretrained Models
