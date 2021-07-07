@@ -7,7 +7,7 @@
 ![teaser image](./assets/teaser_square.png)
 
 ## Setup
-```
+```bash
 # Create python environment (optional)
 conda create -n vlt5 python=3.7
 
@@ -22,7 +22,7 @@ python -c "import language_evaluation; language_evaluation.download('coco')"
 ```
 
 ## Code structure
-```
+```bash
 # Store images, features, and annotations
 ./datasets
     COCO/
@@ -123,7 +123,7 @@ model.test_step(test_batch)
 ```
 
 To add a new task, you can start with writing 3 files by editing from existing ones.
-```
+``` bash
 NEW_TASK_model.py # Define a VLT5NewTask/VLBartNewTask model which inherits VLT5/VLBart class
 NEW_TASK_data.py # Define Dataset/DataLoader/Evaluator
 NEW_TASK.py # Define a trainer which inherits TrainerBase (trainer_base.py)
@@ -151,10 +151,9 @@ NEW_TASK.py # Define a trainer which inherits TrainerBase (trainer_base.py)
 - For manual feature extraction, please checkout [./feature_extraction](./feature_extraction)
 
 ## Pretraining on COCO+VG
-```
-# with 4 gpus
+```bash
+# Pretraining with 4 gpus
 cd VL-T5/
-
 bash scripts/COCOVG_pretrain_VLT5.sh 4
 bash scripts/COCOVG_pretrain_VLBart.sh 4
 ```
@@ -162,7 +161,7 @@ bash scripts/COCOVG_pretrain_VLBart.sh 4
 ## Downstream tasks
 
 ### [VQA](https://visualqa.org/)
-```
+```bash
 # Finetuning with 4 gpus
 cd VL-T5/
 bash scripts/VQA_VLT5.sh 4
@@ -170,7 +169,7 @@ bash scripts/VQA_VLBart.sh 4
 ```
 
 ### [GQA](https://cs.stanford.edu/people/dorarad/gqa/)
-```
+```bash
 # Finetuning with 4 gpus
 cd VL-T5/
 bash scripts/GQA_VLT5.sh 4
@@ -178,7 +177,7 @@ bash scripts/GQA_VLBart.sh 4
 ```
 
 ### [NLVR2](http://lil.nlp.cornell.edu/nlvr/)
-```
+```bash
 # Finetuning with 4 gpus
 cd VL-T5/
 bash scripts/NLVR_VLT5.sh 4
@@ -186,7 +185,7 @@ bash scripts/NLVR_VLBart.sh 4
 ```
 
 ### [RefCOCOg](https://github.com/mjhucla/Google_Refexp_toolbox)
-```
+```bash
 # Finetuning with 4 gpus
 cd VL-T5/
 bash scripts/RefCOCOg_VLT5.sh 4
@@ -194,7 +193,7 @@ bash scripts/RefCOCOG_VLBart.sh 4
 ```
 
 ### [VCR](https://visualcommonsense.com/)
-```
+```bash
 # Pretraining on VCR with 4 gpus (optional)
 cd VL-T5/
 bash scripts/VCR_pretrain_VLT5.sh 4
@@ -207,7 +206,7 @@ bash scripts/VCR_VLBart.sh 4
 ```
 
 ### [COCO Caption](https://cocodataset.org/)
-```
+```bash
 # Finetuning with 4 gpus
 cd VL-T5/
 bash scripts/COCOCaption_VLT5.sh 4
@@ -215,7 +214,7 @@ bash scripts/COCOCaption_VLBart.sh 4
 ```
 
 ### [Multi30K](https://github.com/multi30k/dataset)
-```
+```bash
 # Finetuning with 4 gpus
 cd VL-T5/
 bash scripts/Multi30K_VLT5.sh 4
@@ -226,7 +225,7 @@ bash scripts/Multi30K_VLBart.sh 4
 # Reference
 Please cite our paper if you use our models in your works:
 ```bibtex
-@inproceedings{cho2020vlt5,
+@inproceedings{cho2021vlt5,
   title     = {Unifying Vision-and-Language Tasks via Text Generation},
   author    = {Jaemin Cho and Jie Lei and Hao Tan and Mohit Bansal},
   booktitle = {ICML},
