@@ -351,15 +351,15 @@ class PretrainDataset(Dataset):
                 source_text, target_text = preprocess.corrupt_spans(
                     sent, mask_ratio=self.args.word_mask_rate, prefix=prefix)
 
-                input_tokens = [source_text]
                 if self.args.oscar_tags:
+                    input_tokens = [source_text]
                     input_tokens.append('tags:')
                     obj_ids = f[f'{img_id}/obj_id'][()]
                     for obj_id in obj_ids:
                         obj = vg_classes[obj_id]
                         if obj not in input_tokens:
                             input_tokens.append(obj)
-                source_text = ' '.join(input_tokens)
+                    source_text = ' '.join(input_tokens)
 
             elif task == 'qa':
                 assert text_source in ['vqa', 'gqa', 'visual7w'], (text_source, uid)
@@ -384,15 +384,15 @@ class PretrainDataset(Dataset):
                     source_text = f"vqa: {sent}"
                 else:
                     source_text = f"{text_source}: {sent}"
-                input_tokens = [source_text]
                 if self.args.oscar_tags:
+                    input_tokens = [source_text]
                     input_tokens.append('tags:')
                     obj_ids = f[f'{img_id}/obj_id'][()]
                     for obj_id in obj_ids:
                         obj = vg_classes[obj_id]
                         if obj not in input_tokens:
                             input_tokens.append(obj)
-                source_text = ' '.join(input_tokens)
+                    source_text = ' '.join(input_tokens)
                 target_text = ans
 
             elif task == 'itm':
@@ -418,15 +418,17 @@ class PretrainDataset(Dataset):
                     sent = other_datum['sent']
 
                 prefix = "image text match:"
-                # source_text = f"{prefix} {sent}"
-                input_tokens = [prefix]
+                source_text = f"{prefix} {sent}"
+
                 if self.args.oscar_tags:
+                    input_tokens = [source_text]
+                    input_tokens.append('tags:')
                     obj_ids = f[f'{img_id}/obj_id'][()]
                     for obj_id in obj_ids:
                         obj = vg_classes[obj_id]
                         if obj not in input_tokens:
                             input_tokens.append(obj)
-                source_text = ' '.join(input_tokens)
+                    source_text = ' '.join(input_tokens)
                 if is_matched:
                     target_text = 'true'
                 else:
@@ -542,15 +544,15 @@ class PretrainDataset(Dataset):
                 source_text, target_text = preprocess.corrupt_bart(
                     sent, mask_ratio=self.args.word_mask_rate, prefix=prefix)
 
-                input_tokens = [source_text]
                 if self.args.oscar_tags:
+                    input_tokens = [source_text]
                     input_tokens.append('tags:')
                     obj_ids = f[f'{img_id}/obj_id'][()]
                     for obj_id in obj_ids:
                         obj = vg_classes[obj_id]
                         if obj not in input_tokens:
                             input_tokens.append(obj)
-                source_text = ' '.join(input_tokens)
+                    source_text = ' '.join(input_tokens)
 
             elif task == 'qa':
                 assert text_source in ['vqa', 'gqa',
@@ -573,16 +575,19 @@ class PretrainDataset(Dataset):
 
                 sent = datum['sent']
 
-                source_text = f"{text_source}: {sent}"
-                input_tokens = [source_text]
+                if self.args.single_vqa_prefix:
+                    source_text = f"vqa: {sent}"
+                else:
+                    source_text = f"{text_source}: {sent}"
                 if self.args.oscar_tags:
+                    input_tokens = [source_text]
                     input_tokens.append('tags:')
                     obj_ids = f[f'{img_id}/obj_id'][()]
                     for obj_id in obj_ids:
                         obj = vg_classes[obj_id]
                         if obj not in input_tokens:
                             input_tokens.append(obj)
-                source_text = ' '.join(input_tokens)
+                    source_text = ' '.join(input_tokens)
                 target_text = ans
 
             elif task == 'itm':
@@ -609,15 +614,17 @@ class PretrainDataset(Dataset):
                     sent = other_datum['sent']
 
                 prefix = "image text match:"
-                # source_text = f"{prefix} {sent}"
-                input_tokens = [prefix]
+                source_text = f"{prefix} {sent}"
+
                 if self.args.oscar_tags:
+                    input_tokens = [source_text]
+                    input_tokens.append('tags:')
                     obj_ids = f[f'{img_id}/obj_id'][()]
                     for obj_id in obj_ids:
                         obj = vg_classes[obj_id]
                         if obj not in input_tokens:
                             input_tokens.append(obj)
-                source_text = ' '.join(input_tokens)
+                    source_text = ' '.join(input_tokens)
                 if is_matched:
                     target_text = 'true'
                 else:
