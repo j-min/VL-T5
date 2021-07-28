@@ -85,8 +85,7 @@ class GQAFineTuneDataset(Dataset):
             if self.verbose:
                 print(f"Loaded {len(_data_info_dicts)} data from", source)
 
-        else:
-            data = data_info_dicts
+        data = data_info_dicts
 
         self.n_gpus = torch.cuda.device_count()
 

@@ -81,8 +81,6 @@ class MMTDataset(Dataset):
                     vg_classes.append(obj.split(',')[0].lower().strip())
             self.vg_classes = vg_classes
 
-        data = []
-
         with open(wmt_data_dir.joinpath(f'raw/{self.source}.en')) as f:
             source_text_list = f.readlines()
 

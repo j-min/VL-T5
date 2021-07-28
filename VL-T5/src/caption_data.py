@@ -78,7 +78,7 @@ class COCOCaptionFineTuneDataset(Dataset):
 
         data_info_path = dataset_dir.joinpath('COCO/dataset_coco.json')
         with open(data_info_path) as f:
-            karparthy_data = json.load(f)
+            karpathy_data = json.load(f)
 
         split_rename = {
             'train': 'train',
@@ -90,7 +90,7 @@ class COCOCaptionFineTuneDataset(Dataset):
         n_images = 0
 
         data = []
-        for datum in karparthy_data['images']:
+        for datum in karpathy_data['images']:
             re_split = split_rename[datum['split']]
             if re_split != self.source.split('_')[-1]:
                 continue
