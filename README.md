@@ -2,7 +2,7 @@
 
 * Authors: [Jaemin Cho](https://j-min.io), [Jie Lei](https://www.cs.unc.edu/~jielei/), [Hao Tan](https://www.cs.unc.edu/~airsplay/), and [Mohit Bansal](https://www.cs.unc.edu/~mbansal/)
 * [Paper](https://arxiv.org/abs/2102.02779) (To appear in [ICML 2021](https://icml.cc/Conferences/2021))
-* [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/j-min/VL-T5/blob/main/inference_example.ipynb)
+* [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/j-min/VL-T5/blob/main/inference_example.ipynb) (VQA inference using pretrained model on custom image/question)
 
 ![teaser image](./assets/teaser_square.png)
 
@@ -10,6 +10,7 @@
 ```bash
 # Create python environment (optional)
 conda create -n vlt5 python=3.7
+source activate vlt5
 
 # Install python dependencies
 pip install -r requirements.txt
@@ -17,7 +18,7 @@ pip install -r requirements.txt
 # Download T5/BART backbone checkpoint
 python download_backbones.py
 
-# For MSCOCO captioning evaluation
+# For MSCOCO captioning evaluation (optional; for captioning only)
 python -c "import language_evaluation; language_evaluation.download('coco')"
 ```
 
@@ -129,9 +130,15 @@ NEW_TASK_data.py # Define Dataset/DataLoader/Evaluator
 NEW_TASK.py # Define a trainer which inherits TrainerBase (trainer_base.py)
 ```
 
+## Download Pre-trained models / Pre-extracted features
+We host model checkpoints and features via google drive.
+We recommend using [gdrive](https://github.com/prasmussen/gdrive) to download them.
 
 ## Pretrained Models
 - Download `snap/` from [Google Drive](https://drive.google.com/drive/folders/1_SBj4sZ0gUqfBon1gFBiNRAmfHv5w_ph?usp=sharing)
+```bash
+gdrive download 1_SBj4sZ0gUqfBon1gFBiNRAmfHv5w_ph --recursive
+```
 
 ### COCO+VG pretraining (default)
 * `VL-T5/snap/pretrain/VLT5/Epoch30.pth`: VL-T5 pretrained for 30 epochs on COCO+VG
@@ -144,6 +151,10 @@ NEW_TASK.py # Define a trainer which inherits TrainerBase (trainer_base.py)
 
 ## Dataset Preparation / Feature extraction
 - Download `datasets/` from [Google Drive](https://drive.google.com/drive/folders/1MBBhlkP83VMKS2Qe0SmFfzkHhMpIG5wf?usp=sharing)
+```bash
+gdrive download 1MBBhlkP83VMKS2Qe0SmFfzkHhMpIG5wf --recursive
+```
+
   - Multi30K only
     - `git clone --recursive https://github.com/multi30k/dataset ./datasets/multi30k-dataset`
     - unzip `train.en.gz`, `val.en.gz`, `test_2017_flickr.en.gz`, `test_2018_flickr.en.gz` in `./datasets/multi30k-dataset/data/task1/raw/`
