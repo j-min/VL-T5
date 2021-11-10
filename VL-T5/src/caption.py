@@ -383,6 +383,7 @@ class Trainer(TrainerBase):
 
         if self.verbose:
             predictions = results['predictions']
+            print('# predictions:', len(predictions))
             if dump_path is None:
                 targets = results['targets']
                 evaluator = loader.evaluator
@@ -407,7 +408,7 @@ def main_worker(gpu, args):
         workers=args.num_workers,
         topk=args.train_topk,
     )
-    # if gpu == 0:
+
     if args.valid_batch_size is not None:
         valid_batch_size = args.valid_batch_size
     else:
@@ -416,7 +417,7 @@ def main_worker(gpu, args):
     val_loader = get_loader(
         args,
         split=args.valid, mode='val', batch_size=valid_batch_size,
-        distributed=False, gpu=args.gpu,
+        distributed=args.distributed, gpu=args.gpu,
         workers=4,
         topk=args.valid_topk,
     )
@@ -426,13 +427,10 @@ def main_worker(gpu, args):
     test_loader = get_loader(
         args,
         split=args.test, mode='val', batch_size=valid_batch_size,
-        distributed=False, gpu=args.gpu,
+        distributed=args.distributed, gpu=args.gpu,
         workers=4,
         topk=args.valid_topk,
         )
-    # else:
-    #     val_loader = None
-    #     test_loader = None
 
     trainer = Trainer(args, train_loader, val_loader, test_loader, train=True)
     trainer.train()

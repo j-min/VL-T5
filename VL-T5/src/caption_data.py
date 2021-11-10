@@ -366,9 +366,10 @@ def get_loader(args, split='karpathy_train', mode='train',
     else:
         loader = DataLoader(
             dataset,
-            batch_size=batch_size, shuffle=False,
+            batch_size=batch_size,
             num_workers=workers, pin_memory=True,
-            sampler=None,
+            sampler=sampler,
+            shuffle=None if (sampler is not None) else False,
             collate_fn=dataset.collate_fn,
             drop_last=False)
 
