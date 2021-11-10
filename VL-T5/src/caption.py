@@ -20,6 +20,7 @@ from param import parse_args
 
 from caption_data import get_loader
 from utils import load_state_dict, LossMeter, set_global_logging_level
+import dist_utils
 import wandb
 from pprint import pformat
 
@@ -264,9 +265,10 @@ class Trainer(TrainerBase):
                 #  'ROUGE_L': 0.75,
                 #  'SPICE': 0.6666666666666666}
 
-                # Validation
-                valid_results = self.evaluate(self.val_loader)
+            # Validation
+            valid_results = self.evaluate(self.val_loader)
 
+            if self.verbose:
                 valid_score = valid_results['CIDEr']
 
                 if valid_score > best_valid or epoch == 0:
@@ -298,15 +300,17 @@ class Trainer(TrainerBase):
         if self.verbose:
             self.save("LAST")
 
-            # Test Set
-            best_path = os.path.join(self.args.output, 'BEST')
-            self.load(best_path)
+        # Test Set
+        best_path = os.path.join(self.args.output, 'BEST')
+        self.load(best_path)
 
+        if self.verbose:
             wandb.save(best_path, base_path=self.args.output)
             print(f'\nUploaded checkpoint {best_epoch}', best_path)
 
-            test_results = self.evaluate(self.test_loader)
+        test_results = self.evaluate(self.test_loader)
 
+        if self.verbose:
             wandb_log_dict = {}
             for score_name, score in test_results.items():
                 wandb_log_dict[f'Test/{score_name}'] = score
@@ -337,7 +341,7 @@ class Trainer(TrainerBase):
             gen_kwargs['num_beams'] = self.args.num_beams
             gen_kwargs['max_length'] = self.args.gen_max_length
 
-            for i, batch in enumerate(tqdm(loader, ncols=120, desc="Prediction")):
+            for i, batch in enumerate(tqdm(loader, ncols=120, desc="Prediction", disable=not self.verbose)):
 
                 if self.args.distributed:
                     results = self.model.module.test_step(
@@ -358,32 +362,32 @@ class Trainer(TrainerBase):
                 'targets': targets
             }
 
+            if self.args.distributed:
+                dist.barrier()
+
+                dist_results = dist_utils.all_gather(results)
+                predictions = []
+                targets = []
+                for result in dist_results:
+                    predictions.extend(result['predictions'])
+                    targets.extend(result['targets'])
+                results = {
+                    'predictions': predictions,
+                    'targets': targets
+                }
+
             return results
 
     def evaluate(self, loader, dump_path=None):
-        evaluator = loader.evaluator
         results = self.predict(loader, dump_path)
 
-        predictions = results['predictions']
-        if dump_path is None:
-            targets = results['targets']
-            eval_results = evaluator.evaluate(predictions, targets)
-            return eval_results
-
-    @staticmethod
-    def oracle_score(loader):
-        evaluator = loader.evaluator
-        quesid2ans = {}
-        for i, batch in enumerate(loader):
-
-            ques_id = batch['question_ids']
-            label = batch['targets']
-
-            _, label = label.max(1)
-            for qid, l in zip(ques_id, label.cpu().numpy()):
-                ans = loader.dataset.raw_dataset.label2ans[l]
-                quesid2ans[qid] = ans
-        return evaluator.evaluate(quesid2ans)
+        if self.verbose:
+            predictions = results['predictions']
+            if dump_path is None:
+                targets = results['targets']
+                evaluator = loader.evaluator
+                eval_results = evaluator.evaluate(predictions, targets)
+                return eval_results
 
 def main_worker(gpu, args):
     # GPU is assigned
@@ -403,32 +407,32 @@ def main_worker(gpu, args):
         workers=args.num_workers,
         topk=args.train_topk,
     )
-    if gpu == 0:
-        if args.valid_batch_size is not None:
-            valid_batch_size = args.valid_batch_size
-        else:
-            valid_batch_size = args.batch_size
-        print(f'Building val loader at GPU {gpu}')
-        val_loader = get_loader(
-            args,
-            split=args.valid, mode='val', batch_size=valid_batch_size,
-            distributed=False, gpu=args.gpu,
-            workers=4,
-            topk=args.valid_topk,
-        )
-        print('# len val loader:', len(val_loader))
-
-        print(f'Building test loader at GPU {gpu}')
-        test_loader = get_loader(
-            args,
-            split=args.test, mode='val', batch_size=valid_batch_size,
-            distributed=False, gpu=args.gpu,
-            workers=4,
-            topk=args.valid_topk,
-        )
+    # if gpu == 0:
+    if args.valid_batch_size is not None:
+        valid_batch_size = args.valid_batch_size
     else:
-        val_loader = None
-        test_loader = None
+        valid_batch_size = args.batch_size
+    print(f'Building val loader at GPU {gpu}')
+    val_loader = get_loader(
+        args,
+        split=args.valid, mode='val', batch_size=valid_batch_size,
+        distributed=False, gpu=args.gpu,
+        workers=4,
+        topk=args.valid_topk,
+    )
+    print('# len val loader:', len(val_loader))
+
+    print(f'Building test loader at GPU {gpu}')
+    test_loader = get_loader(
+        args,
+        split=args.test, mode='val', batch_size=valid_batch_size,
+        distributed=False, gpu=args.gpu,
+        workers=4,
+        topk=args.valid_topk,
+        )
+    # else:
+    #     val_loader = None
+    #     test_loader = None
 
     trainer = Trainer(args, train_loader, val_loader, test_loader, train=True)
     trainer.train()

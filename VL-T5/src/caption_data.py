@@ -97,10 +97,7 @@ class COCOCaptionFineTuneDataset(Dataset):
 
             if re_split == 'train':
                 for d in datum['sentences']:
-                    if self.args.BUTD100:
-                        img_id = str(int(datum['filename'].split('.')[0].split('_')[-1]))
-                    else:
-                        img_id = datum['filename'].split('.')[0]
+                    img_id = datum['filename'].split('.')[0]
                     new_datum = {
                         'img_id': img_id,
                         'sent': d['raw'].strip(),
@@ -109,11 +106,7 @@ class COCOCaptionFineTuneDataset(Dataset):
                     }
                     data.append(new_datum)
             else:
-                if self.args.BUTD100:
-                    img_id = str(
-                        int(datum['filename'].split('.')[0].split('_')[-1]))
-                else:
-                    img_id = datum['filename'].split('.')[0]
+                img_id = datum['filename'].split('.')[0]
                 new_datum = {
                     'img_id': img_id,
                     # 'sent': d['raw'],
@@ -166,13 +159,10 @@ class COCOCaptionFineTuneDataset(Dataset):
             out_dict['img_id'] = img_id
 
 
-            if self.args.BUTD100:
-                source = self.source
-            else:
-                if 'train' in img_id:
-                    source = 'train2014'
-                elif 'val' in img_id:
-                    source = 'val2014'
+            if 'train' in img_id:
+                source = 'train2014'
+            elif 'val' in img_id:
+                source = 'val2014'
 
             f = self.source_to_h5[source]
 
@@ -201,16 +191,11 @@ class COCOCaptionFineTuneDataset(Dataset):
             f[f'{img_id}/features'].read_direct(feats)
             feats = torch.from_numpy(feats)
 
-            if self.args.n_boxes == 100:
-                assert n_boxes == 100
-                assert len(feats) == 100
-                assert len(boxes) == 100
-
             n_boxes = min(n_boxes, self.args.max_n_boxes)
             out_dict['n_boxes'] = n_boxes
-            if not self.args.BUTD100:
-                boxes = boxes[:n_boxes]
-                feats = feats[:n_boxes]
+            # if not self.args.BUTD100:
+            boxes = boxes[:n_boxes]
+            feats = feats[:n_boxes]
             out_dict['boxes'] = boxes
             out_dict['vis_feats'] = feats
 
@@ -354,34 +339,29 @@ class COCOCaptionFineTuneDataset(Dataset):
         return batch_entry
 
 
-def get_loader(args, split='train', mode='train',
+def get_loader(args, split='karpathy_train', mode='train',
                batch_size=32, workers=4, distributed=False, gpu=0,
                topk=-1):
 
-    # if 'mscoco' in split:
     verbose = (gpu == 0)
 
     dataset = COCOCaptionFineTuneDataset(
         split,
-        # raw_dataset=_dset,
         rank=gpu,
         topk=topk,
         verbose=verbose,
         args=args,
         mode=mode)
-    # elif 'CC' in split:
-    #     dataset = CCDataset(split, transform=transform, topk=topk)
 
-    if distributed and mode == 'train':
-        # sampler = DistributedSampler(dataset, num_replicas=world_size, rank=local_rank)
-        train_sampler = DistributedSampler(dataset)
-        # train_sampler = RandomNonreplacmentSampler(dataset, dataset.n_iter)
+    if distributed:
+        sampler = DistributedSampler(dataset)
     else:
-        train_sampler = None
+        sampler = None
+
     if mode == 'train':
         loader = DataLoader(
-            dataset, batch_size=batch_size, shuffle=(train_sampler is None),
-            num_workers=workers, pin_memory=True, sampler=train_sampler,
+            dataset, batch_size=batch_size, shuffle=(sampler is None),
+            num_workers=workers, pin_memory=True, sampler=sampler,
             collate_fn=dataset.collate_fn)
     else:
         loader = DataLoader(
