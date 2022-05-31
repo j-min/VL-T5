@@ -3,6 +3,7 @@
 * Authors: [Jaemin Cho](https://j-min.io), [Jie Lei](https://www.cs.unc.edu/~jielei/), [Hao Tan](https://www.cs.unc.edu/~airsplay/), and [Mohit Bansal](https://www.cs.unc.edu/~mbansal/)
 * [Paper](https://arxiv.org/abs/2102.02779) (To appear in [ICML 2021](https://icml.cc/Conferences/2021))
 * [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/j-min/VL-T5/blob/main/inference_example.ipynb) (VQA inference using pretrained model on custom image/question)
+* Try web demo and docker image on VQA here [![Replicate](https://replicate.com/j-min/vl-t5/badge)](https://replicate.com/j-min/vl-t5)
 
 ![teaser image](./assets/teaser_square.png)
 
