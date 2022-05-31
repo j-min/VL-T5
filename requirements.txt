@@ -9,6 +9,6 @@ pandas
 matplotlib
 pyyaml
 sacrebleu
-git+git://github.com/j-min/language-evaluation@master
+git+https://github.com/j-min/language-evaluation@master
 torchvision==0.7.0
 wget
