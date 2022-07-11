@@ -18,6 +18,7 @@ python -m torch.distributed.launch \
         --epochs 20 \
         --num_workers 4 \
         --backbone 'facebook/bart-base' \
+        --use_vis_layer_norm False \
         --output $output ${@:2} \
         --load snap/pretrain/VLBart/Epoch30 \
         --batch_size 100 \
