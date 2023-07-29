@@ -143,26 +143,11 @@ class VisualEmbedding(nn.Module):
 
 class JointEncoder(T5Stack):
     def __init__(self, config, embed_tokens=None):
-        super(T5Stack, self).__init__(config)
+        super().__init__(config=config, embed_tokens=embed_tokens)
         self.config = config
-
-        self.embed_tokens = embed_tokens
-        self.is_decoder = self.config.is_decoder
         assert self.config.is_decoder is False
 
         self.visual_embedding = VisualEmbedding(self.config, embed_tokens)
-
-        self.block = nn.ModuleList(
-            [T5Block(config, has_relative_attention_bias=(i == 0))
-                for i in range(config.num_layers)]
-        )
-        self.final_layer_norm = T5LayerNorm(
-            config.d_model, eps=config.layer_norm_epsilon)
-        self.dropout = nn.Dropout(config.dropout_rate)
-
-        self.init_weights()
-        self.model_parallel = False
-        self.device_map = None
 
     def set_input_embeddings(self, new_embeddings):
         self.embed_tokens = new_embeddings
@@ -176,13 +161,16 @@ class JointEncoder(T5Stack):
         vis_inputs=None,
         vis_attention_mask=None,
 
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
         inputs_embeds=None,
         head_mask=None,
+        cross_attn_head_mask=None,
         past_key_values=None,
-        use_cache=None,
+        use_cache=False,
         output_attentions=None,
         output_hidden_states=None,
-        return_dict=None,
+        return_dict=True,
     ):
 
         if inputs_embeds is None:
@@ -275,18 +263,22 @@ class JointEncoder(T5Stack):
                     encoder_hidden_states=None,
                     encoder_attention_mask=None,
                     encoder_decoder_position_bias=None,
-                    head_mask=head_mask[i],
+                    layer_head_mask=head_mask[i],
+                    cross_attn_head_mask=None,
                     past_key_value=past_key_value,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
                 )
                 # layer_outputs is a tuple with:
-                # hidden-states, key-value-states, (self-attention weights), (self-attention position bias), (cross-attention weights), (cross-attention position bias)
+                # hidden-states, key-value-states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
+                if use_cache is False:
+                    layer_outputs = layer_outputs[:1] + (None,) + layer_outputs[1:]
+
                 hidden_states, present_key_value_state = layer_outputs[:2]
 
                 # We share the position biases between the layers - the first layer store them
-                # layer_outputs = hidden-states, key-value-states (self-attention weights),
-                # (self-attention position bias), (cross-attention weights), (cross-attention position bias)
+                # layer_outputs = hidden-states, key-value-states (self-attention position bias), (self-attention weights),
+                # (cross-attention position bias), (cross-attention weights)
                 position_bias = layer_outputs[2]
 
                 # append next layer key value states
@@ -329,14 +321,10 @@ class JointEncoder(T5Stack):
 
 
 class VLT5(T5ForConditionalGeneration):
-    _keys_to_ignore_on_load_missing = [
-        r"encoder\.embed_tokens\.weight",
-        r"decoder\.embed_tokens\.weight",
-        r"lm_head\.weight",
-    ]
     _keys_to_ignore_on_load_unexpected = [
-        r"decoder\.block\.0\.layer\.1\.EncDecAttention\.relative_attention_bias\.weight",
+        "decoder.block.0.layer.1.EncDecAttention.relative_attention_bias.weight",
     ]
+    _tied_weights_keys = ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight", "lm_head.weight"]
 
     def __init__(self, config):
         super(T5ForConditionalGeneration, self).__init__(config)
